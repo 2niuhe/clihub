@@ -148,6 +148,9 @@ func TestAuthenticate_FullFlow(t *testing.T) {
 	if tokens.ExpiresAt.IsZero() {
 		t.Error("expected non-zero expires_at")
 	}
+	if tokens.TokenEndpoint != ts2URL+"/token" {
+		t.Errorf("got token_endpoint %q, want %q", tokens.TokenEndpoint, ts2URL+"/token")
+	}
 }
 
 func TestAuthenticate_MetadataDiscoveryFails(t *testing.T) {

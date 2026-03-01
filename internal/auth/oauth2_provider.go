@@ -67,32 +67,50 @@ func (p *OAuth2Provider) OnUnauthorized(ctx context.Context, _ *http.Response) (
 			return false, fmt.Errorf("cannot refresh: %w", err)
 		}
 		tokenEndpoint = endpoint
+		// Persist discovered endpoint so subsequent refreshes don't need discovery.
+		entry := creds.Servers[p.ServerURL]
+		entry.TokenEndpoint = tokenEndpoint
+		creds.Servers[p.ServerURL] = entry
+		_ = SaveCredentials(p.CredPath, creds)
 	}
 
 	// Attempt refresh
 	httpClient := &http.Client{Timeout: 30 * time.Second}
-	tokenResp, err := RefreshAccessToken(ctx, httpClient, tokenEndpoint, sc.ClientID, sc.RefreshToken)
+	clientID := sc.ClientID
+	if clientID == "" {
+		clientID = p.ClientID
+	}
+	clientSecret := sc.ClientSecret
+	if clientSecret == "" {
+		clientSecret = p.ClientSecret
+	}
+	tokenResp, err := RefreshAccessToken(ctx, httpClient, tokenEndpoint, clientID, clientSecret, sc.RefreshToken)
 	if err != nil {
 		return false, fmt.Errorf("token refresh failed: %w", err)
 	}
 
 	// Update credential store
-	var expiresAt *time.Time
+	var expiresAt time.Time
 	if tokenResp.ExpiresIn > 0 {
-		t := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
-		expiresAt = &t
+		expiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 	}
 	refreshToken := tokenResp.RefreshToken
 	if refreshToken == "" {
 		refreshToken = sc.RefreshToken // keep old refresh token if not rotated
 	}
-	SetOAuthTokens(creds, p.ServerURL, tokenResp.AccessToken, refreshToken, sc.ClientID, sc.Scope, expiresAt)
-	if tokenEndpoint != "" {
-		// Store token endpoint for future refreshes
-		entry := creds.Servers[p.ServerURL]
-		entry.TokenEndpoint = tokenEndpoint
-		creds.Servers[p.ServerURL] = entry
+	scope := sc.Scope
+	if tokenResp.Scope != "" {
+		scope = tokenResp.Scope
 	}
+	SetOAuthTokens(creds, p.ServerURL, OAuthTokens{
+		AccessToken:   tokenResp.AccessToken,
+		RefreshToken:  refreshToken,
+		ExpiresAt:     expiresAt,
+		ClientID:      clientID,
+		ClientSecret:  clientSecret,
+		TokenEndpoint: tokenEndpoint,
+		Scope:         scope,
+	})
 	_ = SaveCredentials(p.CredPath, creds)
 
 	p.cachedToken = tokenResp.AccessToken
@@ -119,7 +137,7 @@ func (p *OAuth2Provider) RunInteractiveFlow(ctx context.Context) (string, error)
 	if p.CredPath != "" {
 		creds, loadErr := LoadCredentials(p.CredPath)
 		if loadErr == nil {
-			SetOAuthTokens(creds, p.ServerURL, tokens.AccessToken, tokens.RefreshToken, tokens.ClientID, tokens.Scope, &tokens.ExpiresAt)
+			SetOAuthTokens(creds, p.ServerURL, *tokens)
 			_ = SaveCredentials(p.CredPath, creds)
 		}
 	}

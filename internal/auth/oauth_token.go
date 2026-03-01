@@ -42,11 +42,14 @@ func ExchangeCode(ctx context.Context, client *http.Client, tokenEndpoint string
 }
 
 // RefreshAccessToken uses a refresh token to obtain a new access token.
-func RefreshAccessToken(ctx context.Context, client *http.Client, tokenEndpoint, clientID, refreshToken string) (*TokenResponse, error) {
+func RefreshAccessToken(ctx context.Context, client *http.Client, tokenEndpoint, clientID, clientSecret, refreshToken string) (*TokenResponse, error) {
 	form := url.Values{
 		"grant_type":    {"refresh_token"},
 		"client_id":     {clientID},
 		"refresh_token": {refreshToken},
+	}
+	if clientSecret != "" {
+		form.Set("client_secret", clientSecret)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", tokenEndpoint, strings.NewReader(form.Encode()))

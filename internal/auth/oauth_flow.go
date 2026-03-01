@@ -164,10 +164,12 @@ func Authenticate(ctx context.Context, cfg FlowConfig) (*OAuthTokens, error) {
 
 	// Build result
 	tokens := &OAuthTokens{
-		AccessToken:  tokenResp.AccessToken,
-		RefreshToken: tokenResp.RefreshToken,
-		ClientID:     clientID,
-		Scope:        tokenResp.Scope,
+		AccessToken:   tokenResp.AccessToken,
+		RefreshToken:  tokenResp.RefreshToken,
+		ClientID:      clientID,
+		ClientSecret:  clientSecret,
+		TokenEndpoint: authMeta.TokenEndpoint,
+		Scope:         tokenResp.Scope,
 	}
 	if tokenResp.ExpiresIn > 0 {
 		tokens.ExpiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)

@@ -170,21 +170,28 @@ func GetOAuthCredential(creds *CredentialsFile, serverURL string) *ServerCredent
 }
 
 // SetOAuthTokens stores OAuth tokens for the given server URL using v2 format.
-func SetOAuthTokens(creds *CredentialsFile, serverURL, accessToken, refreshToken, clientID, scope string, expiresAt *time.Time) {
+func SetOAuthTokens(creds *CredentialsFile, serverURL string, tokens OAuthTokens) {
 	if creds.Servers == nil {
 		creds.Servers = make(map[string]ServerCredential)
 	}
 	if creds.Version < 2 {
 		creds.Version = 2
 	}
+	var expiresAt *time.Time
+	if !tokens.ExpiresAt.IsZero() {
+		t := tokens.ExpiresAt
+		expiresAt = &t
+	}
 	creds.Servers[serverURL] = ServerCredential{
-		AuthType:     "oauth2",
-		Type:         "oauth", // kept for any v1 readers
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresAt:    expiresAt,
-		ClientID:     clientID,
-		Scope:        scope,
+		AuthType:      "oauth2",
+		Type:          "oauth", // kept for any v1 readers
+		AccessToken:   tokens.AccessToken,
+		RefreshToken:  tokens.RefreshToken,
+		ExpiresAt:     expiresAt,
+		ClientID:      tokens.ClientID,
+		ClientSecret:  tokens.ClientSecret,
+		TokenEndpoint: tokens.TokenEndpoint,
+		Scope:         tokens.Scope,
 	}
 }
 

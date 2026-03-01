@@ -191,7 +191,15 @@ func TestSetToken_NilServersMap(t *testing.T) {
 func TestSetAndGetOAuthTokens(t *testing.T) {
 	creds := &CredentialsFile{Version: 2, Servers: make(map[string]ServerCredential)}
 	exp := time.Now().Add(1 * time.Hour)
-	SetOAuthTokens(creds, "https://mcp.notion.com", "access-1", "refresh-1", "client-1", "mcp:tools", &exp)
+	SetOAuthTokens(creds, "https://mcp.notion.com", OAuthTokens{
+		AccessToken:   "access-1",
+		RefreshToken:  "refresh-1",
+		ExpiresAt:     exp,
+		ClientID:      "client-1",
+		ClientSecret:  "secret-1",
+		TokenEndpoint: "https://auth.example.com/token",
+		Scope:         "mcp:tools",
+	})
 
 	sc := creds.Servers["https://mcp.notion.com"]
 	if sc.AuthType != "oauth2" {
@@ -206,12 +214,23 @@ func TestSetAndGetOAuthTokens(t *testing.T) {
 	if sc.ClientID != "client-1" {
 		t.Errorf("ClientID = %q, want %q", sc.ClientID, "client-1")
 	}
+	if sc.ClientSecret != "secret-1" {
+		t.Errorf("ClientSecret = %q, want %q", sc.ClientSecret, "secret-1")
+	}
+	if sc.TokenEndpoint != "https://auth.example.com/token" {
+		t.Errorf("TokenEndpoint = %q, want %q", sc.TokenEndpoint, "https://auth.example.com/token")
+	}
 }
 
 func TestGetToken_OAuthType(t *testing.T) {
 	creds := &CredentialsFile{Version: 2, Servers: make(map[string]ServerCredential)}
 	exp := time.Now().Add(1 * time.Hour)
-	SetOAuthTokens(creds, "https://mcp.example.com", "oauth-access", "refresh", "cid", "", &exp)
+	SetOAuthTokens(creds, "https://mcp.example.com", OAuthTokens{
+		AccessToken:  "oauth-access",
+		RefreshToken: "refresh",
+		ExpiresAt:    exp,
+		ClientID:     "cid",
+	})
 
 	got := GetToken(creds, "https://mcp.example.com")
 	if got != "oauth-access" {
@@ -222,7 +241,13 @@ func TestGetToken_OAuthType(t *testing.T) {
 func TestGetOAuthCredential(t *testing.T) {
 	creds := &CredentialsFile{Version: 2, Servers: make(map[string]ServerCredential)}
 	exp := time.Now().Add(1 * time.Hour)
-	SetOAuthTokens(creds, "https://example.com", "a", "r", "c", "s", &exp)
+	SetOAuthTokens(creds, "https://example.com", OAuthTokens{
+		AccessToken:  "a",
+		RefreshToken: "r",
+		ExpiresAt:    exp,
+		ClientID:     "c",
+		Scope:        "s",
+	})
 
 	sc := GetOAuthCredential(creds, "https://example.com")
 	if sc == nil {

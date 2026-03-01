@@ -39,11 +39,13 @@ type TokenResponse struct {
 
 // OAuthTokens holds the full set of tokens and metadata to persist.
 type OAuthTokens struct {
-	AccessToken  string    `json:"access_token"`
-	RefreshToken string    `json:"refresh_token,omitempty"`
-	ExpiresAt    time.Time `json:"expires_at,omitempty"`
-	ClientID     string    `json:"client_id"`
-	Scope        string    `json:"scope,omitempty"`
+	AccessToken   string    `json:"access_token"`
+	RefreshToken  string    `json:"refresh_token,omitempty"`
+	ExpiresAt     time.Time `json:"expires_at,omitempty"`
+	ClientID      string    `json:"client_id"`
+	ClientSecret  string    `json:"client_secret,omitempty"`
+	TokenEndpoint string    `json:"token_endpoint,omitempty"`
+	Scope         string    `json:"scope,omitempty"`
 }
 
 // TokenExchangeParams holds the parameters for an authorization code exchange.

@@ -161,11 +161,30 @@ func TestRefreshAccessToken_Success(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	resp, err := RefreshAccessToken(context.Background(), ts.Client(), ts.URL, "cid", "old-refresh")
+	resp, err := RefreshAccessToken(context.Background(), ts.Client(), ts.URL, "cid", "", "old-refresh")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if resp.AccessToken != "new-access" {
 		t.Errorf("got %q, want %q", resp.AccessToken, "new-access")
+	}
+}
+
+func TestRefreshAccessToken_WithClientSecret(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.ParseForm()
+		if r.Form.Get("client_secret") != "super-secret" {
+			t.Errorf("expected client_secret 'super-secret', got %q", r.Form.Get("client_secret"))
+		}
+		json.NewEncoder(w).Encode(TokenResponse{
+			AccessToken: "new-access",
+			TokenType:   "Bearer",
+		})
+	}))
+	defer ts.Close()
+
+	_, err := RefreshAccessToken(context.Background(), ts.Client(), ts.URL, "cid", "super-secret", "old-refresh")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

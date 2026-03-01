@@ -223,6 +223,7 @@ func runGenerate(cmd *cobra.Command, args []string) error {
 			if loadErr == nil {
 				creds.Servers[flagURL] = auth.ServerCredential{
 					AuthType:      "s2s_oauth2",
+					Type:          "oauth",
 					ClientID:      flagClientID,
 					ClientSecret:  flagClientSecret,
 					TokenEndpoint: s2sProvider.TokenEndpoint,
@@ -607,10 +608,11 @@ func resolveAuthProvider(serverURL string) (auth.AuthProvider, error) {
 				switch authType {
 				case "oauth2":
 					return &auth.OAuth2Provider{
-						ServerURL: serverURL,
-						CredPath:  credPath,
-						ClientID:  sc.ClientID,
-						Verbose:   verboseFn,
+						ServerURL:    serverURL,
+						CredPath:     credPath,
+						ClientID:     sc.ClientID,
+						ClientSecret: sc.ClientSecret,
+						Verbose:      verboseFn,
 					}, nil
 				case "s2s_oauth2":
 					return &auth.S2SOAuth2Provider{

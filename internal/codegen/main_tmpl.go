@@ -456,25 +456,26 @@ func (p *googleSAProvider) getHeaders(ctx context.Context) map[string]string {
 // --- Credential store types ---
 
 type credentialsFile struct {
+	Version int                         ` + "`" + `json:"version,omitempty"` + "`" + `
 	Servers map[string]serverCredential ` + "`" + `json:"servers"` + "`" + `
 }
 
 type serverCredential struct {
-	AuthType      string    ` + "`" + `json:"auth_type"` + "`" + `
-	Type          string    ` + "`" + `json:"type"` + "`" + `
-	Token         string    ` + "`" + `json:"token"` + "`" + `
-	AccessToken   string    ` + "`" + `json:"access_token"` + "`" + `
-	RefreshToken  string    ` + "`" + `json:"refresh_token"` + "`" + `
-	ExpiresAt     string    ` + "`" + `json:"expires_at"` + "`" + `
-	ClientID      string    ` + "`" + `json:"client_id"` + "`" + `
-	ClientSecret  string    ` + "`" + `json:"client_secret"` + "`" + `
-	TokenEndpoint string    ` + "`" + `json:"token_endpoint"` + "`" + `
-	Scope         string    ` + "`" + `json:"scope"` + "`" + `
-	HeaderName    string    ` + "`" + `json:"header_name"` + "`" + `
-	Username      string    ` + "`" + `json:"username"` + "`" + `
-	Password      string    ` + "`" + `json:"password"` + "`" + `
-	KeyFile       string    ` + "`" + `json:"key_file"` + "`" + `
-	Scopes        []string  ` + "`" + `json:"scopes"` + "`" + `
+	AuthType      string   ` + "`" + `json:"auth_type,omitempty"` + "`" + `
+	Type          string   ` + "`" + `json:"type,omitempty"` + "`" + `
+	Token         string   ` + "`" + `json:"token,omitempty"` + "`" + `
+	AccessToken   string   ` + "`" + `json:"access_token,omitempty"` + "`" + `
+	RefreshToken  string   ` + "`" + `json:"refresh_token,omitempty"` + "`" + `
+	ExpiresAt     string   ` + "`" + `json:"expires_at,omitempty"` + "`" + `
+	ClientID      string   ` + "`" + `json:"client_id,omitempty"` + "`" + `
+	ClientSecret  string   ` + "`" + `json:"client_secret,omitempty"` + "`" + `
+	TokenEndpoint string   ` + "`" + `json:"token_endpoint,omitempty"` + "`" + `
+	Scope         string   ` + "`" + `json:"scope,omitempty"` + "`" + `
+	HeaderName    string   ` + "`" + `json:"header_name,omitempty"` + "`" + `
+	Username      string   ` + "`" + `json:"username,omitempty"` + "`" + `
+	Password      string   ` + "`" + `json:"password,omitempty"` + "`" + `
+	KeyFile       string   ` + "`" + `json:"key_file,omitempty"` + "`" + `
+	Scopes        []string ` + "`" + `json:"scopes,omitempty"` + "`" + `
 }
 
 func (s serverCredential) resolveAuthType() string {
@@ -495,13 +496,17 @@ func (s serverCredential) isExpired() bool {
 
 // --- Token refresh ---
 
-func refreshOAuthToken(credPath, srvURL string, sc serverCredential) (string, error) {
+func refreshOAuthToken(credPath, srvURL string, sc serverCredential) (string, bool, error) {
 	if sc.RefreshToken == "" {
-		return "", fmt.Errorf("access token expired and no refresh token available. Run ` + "`" + `%s auth` + "`" + ` to re-authenticate", os.Args[0])
+		return "", true, fmt.Errorf("access token expired and no refresh token available. Run ` + "`" + `%s auth` + "`" + ` to re-authenticate", os.Args[0])
 	}
 	tokenEndpoint := sc.TokenEndpoint
 	if tokenEndpoint == "" {
-		return "", fmt.Errorf("access token expired and no token endpoint stored. Run ` + "`" + `%s auth` + "`" + ` to re-authenticate", os.Args[0])
+		discovered, err := discoverTokenEndpointForServer(context.Background(), srvURL)
+		if err != nil {
+			return "", false, fmt.Errorf("access token expired and no token endpoint stored, and discovery failed: %w", err)
+		}
+		tokenEndpoint = discovered
 	}
 
 	form := url.Values{
@@ -516,19 +521,20 @@ func refreshOAuthToken(credPath, srvURL string, sc serverCredential) (string, er
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	req, err := http.NewRequestWithContext(context.Background(), "POST", tokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", fmt.Errorf("token refresh request: %w", err)
+		return "", false, fmt.Errorf("token refresh request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("token refresh request failed: %w", err)
+		return "", false, fmt.Errorf("token refresh request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("token refresh failed (%d): %s. Run ` + "`" + `%s auth` + "`" + ` to re-authenticate", resp.StatusCode, string(body), os.Args[0])
+		permanent := isPermanentOAuthFailure(resp.StatusCode, body)
+		return "", permanent, fmt.Errorf("token refresh failed (%d): %s. Run ` + "`" + `%s auth` + "`" + ` to re-authenticate", resp.StatusCode, string(body), os.Args[0])
 	}
 
 	var tokenResp struct {
@@ -537,11 +543,11 @@ func refreshOAuthToken(credPath, srvURL string, sc serverCredential) (string, er
 		ExpiresIn    int    ` + "`" + `json:"expires_in"` + "`" + `
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
-		return "", fmt.Errorf("parse refresh response: %w", err)
+		return "", false, fmt.Errorf("parse refresh response: %w", err)
 	}
 
 	if tokenResp.AccessToken == "" {
-		return "", fmt.Errorf("refresh response missing access_token")
+		return "", false, fmt.Errorf("refresh response missing access_token")
 	}
 
 	// Update credential store
@@ -550,7 +556,12 @@ func refreshOAuthToken(credPath, srvURL string, sc serverCredential) (string, er
 		var creds credentialsFile
 		if json.Unmarshal(data, &creds) == nil && creds.Servers != nil {
 			entry := creds.Servers[srvURL]
+			if entry.AuthType == "" {
+				entry.AuthType = "oauth2"
+				entry.Type = "oauth"
+			}
 			entry.AccessToken = tokenResp.AccessToken
+			entry.TokenEndpoint = tokenEndpoint
 			if tokenResp.RefreshToken != "" {
 				entry.RefreshToken = tokenResp.RefreshToken
 			}
@@ -558,13 +569,118 @@ func refreshOAuthToken(credPath, srvURL string, sc serverCredential) (string, er
 				entry.ExpiresAt = time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second).Format(time.RFC3339)
 			}
 			creds.Servers[srvURL] = entry
+			if creds.Version < 2 {
+				creds.Version = 2
+			}
 			if updated, err := json.MarshalIndent(creds, "", "  "); err == nil {
 				os.WriteFile(credPath, updated, 0600)
 			}
 		}
 	}
 
-	return tokenResp.AccessToken, nil
+	return tokenResp.AccessToken, false, nil
+}
+
+func isPermanentOAuthFailure(status int, body []byte) bool {
+	if status == http.StatusUnauthorized {
+		return true
+	}
+	if status != http.StatusBadRequest {
+		return false
+	}
+
+	var oauthErr struct {
+		Error string ` + "`" + `json:"error"` + "`" + `
+	}
+	if err := json.Unmarshal(body, &oauthErr); err != nil {
+		return false
+	}
+	switch oauthErr.Error {
+	case "invalid_grant", "invalid_client", "unauthorized_client", "invalid_request":
+		return true
+	default:
+		return false
+	}
+}
+
+func discoverTokenEndpointForServer(ctx context.Context, srvURL string) (string, error) {
+	httpClient := &http.Client{Timeout: 30 * time.Second}
+
+	type resourceMeta struct {
+		AuthorizationServers []string ` + "`" + `json:"authorization_servers"` + "`" + `
+	}
+	type authMeta struct {
+		TokenEndpoint string ` + "`" + `json:"token_endpoint"` + "`" + `
+	}
+
+	authServers := []string{discoveryServerRoot(srvURL)}
+	for _, wk := range oauthWellKnownURLsForDiscovery(srvURL, "oauth-protected-resource") {
+		req, err := http.NewRequestWithContext(ctx, "GET", wk, nil)
+		if err != nil {
+			continue
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			continue
+		}
+		var meta resourceMeta
+		err = json.NewDecoder(resp.Body).Decode(&meta)
+		resp.Body.Close()
+		if err == nil && len(meta.AuthorizationServers) > 0 {
+			authServers = meta.AuthorizationServers
+			break
+		}
+	}
+
+	for _, authServer := range authServers {
+		for _, wk := range oauthWellKnownURLsForDiscovery(authServer, "oauth-authorization-server") {
+			req, err := http.NewRequestWithContext(ctx, "GET", wk, nil)
+			if err != nil {
+				continue
+			}
+			resp, err := httpClient.Do(req)
+			if err != nil {
+				continue
+			}
+			if resp.StatusCode != http.StatusOK {
+				resp.Body.Close()
+				continue
+			}
+			var meta authMeta
+			err = json.NewDecoder(resp.Body).Decode(&meta)
+			resp.Body.Close()
+			if err == nil && meta.TokenEndpoint != "" {
+				return meta.TokenEndpoint, nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("could not discover token endpoint for %s", srvURL)
+}
+
+func discoveryServerRoot(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return rawURL
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+func oauthWellKnownURLsForDiscovery(rawURL, suffix string) []string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return nil
+	}
+	path := strings.TrimRight(u.Path, "/")
+	base := fmt.Sprintf("%s://%s/.well-known/%s", u.Scheme, u.Host, suffix)
+	if path == "" {
+		return []string{base}
+	}
+	return []string{base + "/" + strings.TrimLeft(path, "/"), base}
 }
 
 // --- S2S OAuth2 ---
@@ -664,11 +780,15 @@ func resolveAuthProvider() authProvider {
 						token := s.AccessToken
 						if s.isExpired() {
 							if s.RefreshToken != "" {
-								refreshed, err := refreshOAuthToken(credPath, serverURL, s)
+								refreshed, permanent, err := refreshOAuthToken(credPath, serverURL, s)
 								if err != nil {
 									fmt.Fprintf(os.Stderr, "Warning: token refresh failed: %s\n", err)
-									deleteCredential(credPath, serverURL)
-									fmt.Fprintf(os.Stderr, "Stored credentials removed. Run ` + "`" + `%s auth` + "`" + ` to re-authenticate.\n", os.Args[0])
+									if permanent {
+										deleteCredential(credPath, serverURL)
+										fmt.Fprintf(os.Stderr, "Stored credentials removed. Run ` + "`" + `%s auth` + "`" + ` to re-authenticate.\n", os.Args[0])
+									} else {
+										fmt.Fprintf(os.Stderr, "Stored credentials were kept (refresh error may be transient).\n")
+									}
 									return &noAuthProvider{}
 								}
 								token = refreshed
@@ -714,6 +834,9 @@ func defaultCredPath() string {
 func writeCredentials(path string, creds *credentialsFile) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
+	}
+	if creds.Version < 2 {
+		creds.Version = 2
 	}
 	data, err := json.MarshalIndent(creds, "", "  ")
 	if err != nil {
@@ -803,10 +926,11 @@ func saveManualToken(token string) error {
 	data, _ := os.ReadFile(credPath)
 	var creds credentialsFile
 	if json.Unmarshal(data, &creds) != nil || creds.Servers == nil {
-		creds = credentialsFile{Servers: map[string]serverCredential{}}
+		creds = credentialsFile{Version: 2, Servers: map[string]serverCredential{}}
 	}
 	creds.Servers[serverURL] = serverCredential{
 		AuthType: "bearer_token",
+		Type:     "bearer",
 		Token:    token,
 	}
 	if err := writeCredentials(credPath, &creds); err != nil {
@@ -1053,10 +1177,11 @@ func runOAuthFlow(clientID, clientSecret string) error {
 		data, _ := os.ReadFile(credPath)
 		var creds credentialsFile
 		if json.Unmarshal(data, &creds) != nil || creds.Servers == nil {
-			creds = credentialsFile{Servers: map[string]serverCredential{}}
+			creds = credentialsFile{Version: 2, Servers: map[string]serverCredential{}}
 		}
 		entry := serverCredential{
 			AuthType:      "oauth2",
+			Type:          "oauth",
 			AccessToken:   tokens.AccessToken,
 			RefreshToken:  tokens.RefreshToken,
 			ClientID:      clientID,
