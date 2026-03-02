@@ -42,6 +42,19 @@ export PATH="$HOME/.local/bin:$PATH"
 
 Requires Go 1.24+.
 
+## AI Usage
+
+Add the following to your AGENTS.md
+
+```
+## Tools
+
+- Check if tool exists in `bin`.
+- If not, check if official CLI exists. If so, download it and add it to AGENTS.md
+- If not, check official MCP exists. If so, use clihub `go run github.com/thellimist/clihub@latest <server>` (see `--help`). to create a CLI and move the executable to bin folder. Then add it to AGENTS.md
+- If both failed, create new CLI. 
+```
+
 ## Quick Start
 
 ### HTTP MCP server
