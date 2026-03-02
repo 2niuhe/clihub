@@ -52,7 +52,7 @@ Add the following to your AGENTS.md
 - Check if tool exists in `bin`.
 - If not, check if official CLI exists. If so, download it and add it to AGENTS.md
 - If not, check official MCP exists. If so, use clihub `go run github.com/thellimist/clihub@latest <server>` (see `--help`). to create a CLI and move the executable to bin folder. Then add it to AGENTS.md
-- If both failed, create new CLI. 
+- If both failed, give suggestions to create a CLI using official docs and https://clig.dev/
 ```
 
 ## Quick Start
